@@ -1,0 +1,38 @@
+# Java / Spring Boot
+Backend/**/target/
+Backend/**/*.class
+
+# IntelliJ
+Backend/**/.idea/
+Backend/**/*.iml
+
+# Eclipse
+Backend/**/.classpath
+Backend/**/.project
+Backend/**/.settings/
+
+# React / Node
+Frontend/**/node_modules/
+Frontend/**/dist/
+Frontend/**/.vite/
+
+# Environment / secrets
+**/.env
+**/.env.*
+!**/.env.example
+
+# Spring local secrets
+Backend/**/application-local.properties
+Backend/**/application-secret.properties
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# VS Code
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
