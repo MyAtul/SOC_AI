@@ -6,6 +6,7 @@ Backend/**/*.class
 **/.idea/
 **/*.iml
 Backend/**/src/main/resources/application.properties
+**/src/main/resources/application.properties
 
 # Node
 Frontend/**/node_modules/
