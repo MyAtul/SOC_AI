@@ -1,12 +1,14 @@
 package ai_soc_backend.incident.controller;
 
 import ai_soc_backend.incident.dto.AIInvestigationResponse;
+import ai_soc_backend.incident.dto.ApprovalResponse;
 import ai_soc_backend.incident.dto.IncidentResponse;
+import ai_soc_backend.incident.entity.Incident;
 import ai_soc_backend.incident.service.AIInvestigationService;
 import ai_soc_backend.incident.service.ApprovalService;
+import ai_soc_backend.incident.service.IncidentService;
 import ai_soc_backend.incident.service.ResponsePlanService;
 import org.springframework.web.bind.annotation.*;
-import ai_soc_backend.incident.dto.ApprovalResponse;
 
 import java.util.List;
 
@@ -16,17 +18,20 @@ import java.util.List;
 public class IncidentController {
 
     private final AIInvestigationService aiInvestigationService;
-
     private final ApprovalService approvalService;
-
     private final ResponsePlanService responsePlanService;
+    private final IncidentService incidentService;
 
     public IncidentController(
-            AIInvestigationService aiInvestigationService, ApprovalService approvalService, ResponsePlanService responsePlanService
+            AIInvestigationService aiInvestigationService,
+            ApprovalService approvalService,
+            ResponsePlanService responsePlanService,
+            IncidentService incidentService
     ) {
         this.aiInvestigationService = aiInvestigationService;
         this.approvalService = approvalService;
         this.responsePlanService = responsePlanService;
+        this.incidentService = incidentService;
     }
 
     @PostMapping("/{incidentId}/approve")
@@ -46,45 +51,19 @@ public class IncidentController {
     @GetMapping
     public List<IncidentResponse> getIncidents() {
 
-        return List.of(
-
-                new IncidentResponse(
-                        "INC-001",
-                        "Suspicious PowerShell Activity",
-                        "HIGH",
-                        "INVESTIGATING",
-                        "WIN-CLIENT-01",
-                        "Suspicious PowerShell",
-                        "2026-09-20T17:30:00"
-                ),
-
-                new IncidentResponse(
-                        "INC-002",
-                        "Multiple Failed Logins",
-                        "MEDIUM",
-                        "OPEN",
-                        "SERVER-01",
-                        "Brute Force Detection",
-                        "2026-09-20T16:45:00"
-                ),
-
-                new IncidentResponse(
-                        "INC-003",
-                        "Privilege Escalation",
-                        "CRITICAL",
-                        "AWAITING_APPROVAL",
-                        "SERVER-02",
-                        "Privilege Escalation Detection",
-                        "2026-09-20T15:20:00"
-                )
-        );
+        return incidentService.getAllIncidents()
+                .stream()
+                .map(this::toResponse)
+                .toList();
     }
 
     @GetMapping("/{incidentId}")
     public IncidentResponse getIncident(
             @PathVariable String incidentId
     ) {
-        return findIncident(incidentId);
+        return toResponse(
+                incidentService.getIncidentById(incidentId)
+        );
     }
 
     @PostMapping("/{incidentId}/investigate")
@@ -92,48 +71,21 @@ public class IncidentController {
             @PathVariable String incidentId
     ) {
 
-        IncidentResponse incident = findIncident(incidentId);
+        IncidentResponse incident = getIncident(incidentId);
 
         return aiInvestigationService.investigate(incident);
     }
 
-    private IncidentResponse findIncident(String incidentId) {
+    private IncidentResponse toResponse(Incident incident) {
 
-        return switch (incidentId) {
-
-            case "INC-001" -> new IncidentResponse(
-                    "INC-001",
-                    "Suspicious PowerShell Activity",
-                    "HIGH",
-                    "INVESTIGATING",
-                    "WIN-CLIENT-01",
-                    "Suspicious PowerShell",
-                    "2026-09-20T17:30:00"
-            );
-
-            case "INC-002" -> new IncidentResponse(
-                    "INC-002",
-                    "Multiple Failed Logins",
-                    "MEDIUM",
-                    "OPEN",
-                    "SERVER-01",
-                    "Brute Force Detection",
-                    "2026-09-20T16:45:00"
-            );
-
-            case "INC-003" -> new IncidentResponse(
-                    "INC-003",
-                    "Privilege Escalation",
-                    "CRITICAL",
-                    "AWAITING_APPROVAL",
-                    "SERVER-02",
-                    "Privilege Escalation Detection",
-                    "2026-09-20T15:20:00"
-            );
-
-            default -> throw new IllegalArgumentException(
-                    "Incident not found: " + incidentId
-            );
-        };
+        return new IncidentResponse(
+                incident.getIncidentId(),
+                incident.getTitle(),
+                incident.getSeverity(),
+                incident.getStatus(),
+                incident.getHost(),
+                incident.getDetection(),
+                incident.getTimestamp().toString()
+        );
     }
 }

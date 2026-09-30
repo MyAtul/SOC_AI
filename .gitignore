@@ -1,27 +1,22 @@
-# Java / Spring Boot
+# Java
 Backend/**/target/
 Backend/**/*.class
 
 # IntelliJ
-Backend/**/.idea/
-Backend/**/*.iml
+**/.idea/
+**/*.iml
+Backend/**/src/main/resources/application.properties
 
-# Eclipse
-Backend/**/.classpath
-Backend/**/.project
-Backend/**/.settings/
-
-# React / Node
+# Node
 Frontend/**/node_modules/
 Frontend/**/dist/
-Frontend/**/.vite/
 
 # Environment / secrets
 **/.env
 **/.env.*
 !**/.env.example
 
-# Spring local secrets
+# Spring local configuration
 Backend/**/application-local.properties
 Backend/**/application-secret.properties
 
