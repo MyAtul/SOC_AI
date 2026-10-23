@@ -69,6 +69,24 @@ export const investigateIncident = async (
   return response.data;
 };
 
+export const getInvestigation = async (
+  incidentId: string
+): Promise<AIInvestigation | null> => {
+  try {
+    const response = await api.get<AIInvestigation>(
+      `/incidents/${incidentId}/investigation`
+    );
+
+    return response.data;
+  } catch (error) {
+    if (axios.isAxiosError(error) && error.response?.status === 404) {
+      return null;
+    }
+
+    throw error;
+  }
+};
+
 export const approveIncident = async (
   incidentId: string
 ): Promise<ApprovalResponse> => {

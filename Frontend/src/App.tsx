@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 
 import {
   getIncidents,
+  getInvestigation,
   investigateIncident,
   approveIncident,
   denyIncident,
@@ -26,6 +27,10 @@ function App() {
 
   const [investigating, setInvestigating] = useState(false);
 
+  const [investigationLoading, setInvestigationLoading] = useState(false);
+
+  const [investigationError, setInvestigationError] = useState<string | null>(null);
+
   const [approvalLoading, setApprovalLoading] = useState(false);
 
   // ─────────────────────────────────────────────
@@ -35,6 +40,36 @@ function App() {
   useEffect(() => {
     loadIncidents();
   }, []);
+
+  useEffect(() => {
+    if (!selectedIncident) return;
+
+    let ignoreResult = false;
+
+    setInvestigation(null);
+    setInvestigationError(null);
+    setInvestigationLoading(true);
+
+    getInvestigation(selectedIncident.incidentId)
+      .then((result) => {
+        if (!ignoreResult) setInvestigation(result);
+      })
+      .catch((error) => {
+        console.error("Failed to load saved AI investigation:", error);
+        if (!ignoreResult) {
+          setInvestigationError(
+            "The saved investigation could not be loaded. You can try investigating this incident again."
+          );
+        }
+      })
+      .finally(() => {
+        if (!ignoreResult) setInvestigationLoading(false);
+      });
+
+    return () => {
+      ignoreResult = true;
+    };
+  }, [selectedIncident]);
 
   const loadIncidents = async () => {
     try {
@@ -82,6 +117,7 @@ function App() {
     if (!selectedIncident) return;
 
     setInvestigating(true);
+    setInvestigationError(null);
 
     // Clear previous approval when starting
     // a new investigation.
@@ -95,6 +131,9 @@ function App() {
       setInvestigation(result);
     } catch (error) {
       console.error("AI investigation failed:", error);
+      setInvestigationError(
+        "The AI investigation failed. Please try again."
+      );
     } finally {
       setInvestigating(false);
     }
@@ -154,6 +193,8 @@ function App() {
         incident={selectedIncident}
         investigation={investigation}
         investigating={investigating}
+        investigationLoading={investigationLoading}
+        investigationError={investigationError}
         approvalResult={approvalResult}
         approvalLoading={approvalLoading}
         onBack={handleBack}
@@ -482,6 +523,8 @@ function IncidentDetails({
   incident,
   investigation,
   investigating,
+  investigationLoading,
+  investigationError,
   approvalResult,
   approvalLoading,
   onBack,
@@ -492,6 +535,8 @@ function IncidentDetails({
   incident: Incident;
   investigation: AIInvestigation | null;
   investigating: boolean;
+  investigationLoading: boolean;
+  investigationError: string | null;
   approvalResult: ApprovalResponse | null;
   approvalLoading: boolean;
   onBack: () => void;
@@ -627,7 +672,7 @@ function IncidentDetails({
                 </h3>
 
                 <p className="text-sm text-slate-400">
-                  Analyze this incident using the AI investigator.
+                  View or run an AI assessment for this incident.
                 </p>
 
               </div>
@@ -640,12 +685,12 @@ function IncidentDetails({
 
             {/* No investigation */}
 
-            {!investigation && !investigating && (
+            {!investigation && !investigating && !investigationLoading && (
 
               <div className="py-8 text-center">
 
                 <p className="mb-5 text-slate-400">
-                  No AI investigation has been performed yet.
+                  {investigationError ?? "No saved AI investigation is available yet."}
                 </p>
 
                 <button
@@ -661,18 +706,22 @@ function IncidentDetails({
 
             {/* Investigation loading */}
 
-            {investigating && (
+            {(investigating || investigationLoading) && (
 
               <div className="py-10 text-center">
 
                 <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-2 border-slate-700 border-t-cyan-400" />
 
                 <p className="font-medium">
-                  AI investigation in progress...
+                  {investigationLoading
+                    ? "Loading saved AI investigation..."
+                    : "AI investigation in progress..."}
                 </p>
 
                 <p className="mt-1 text-sm text-slate-400">
-                  Analyzing incident evidence
+                  {investigationLoading
+                    ? "Checking for a previous result"
+                    : "Analyzing incident evidence"}
                 </p>
 
               </div>

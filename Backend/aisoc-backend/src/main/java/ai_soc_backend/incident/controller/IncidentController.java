@@ -4,11 +4,12 @@ import ai_soc_backend.incident.dto.AIInvestigationResponse;
 import ai_soc_backend.incident.dto.ApprovalResponse;
 import ai_soc_backend.incident.dto.IncidentResponse;
 import ai_soc_backend.incident.entity.Incident;
-import ai_soc_backend.incident.service.AIInvestigationService;
+import ai_soc_backend.incident.service.AIInvestigationPersistenceService;
 import ai_soc_backend.incident.service.ApprovalService;
 import ai_soc_backend.incident.service.IncidentService;
 import ai_soc_backend.incident.service.ResponsePlanService;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.http.ResponseEntity;
 
 import java.util.List;
 
@@ -17,18 +18,18 @@ import java.util.List;
 @CrossOrigin(origins = "http://localhost:5173")
 public class IncidentController {
 
-    private final AIInvestigationService aiInvestigationService;
+    private final AIInvestigationPersistenceService aiInvestigationPersistenceService;
     private final ApprovalService approvalService;
     private final ResponsePlanService responsePlanService;
     private final IncidentService incidentService;
 
     public IncidentController(
-            AIInvestigationService aiInvestigationService,
+            AIInvestigationPersistenceService aiInvestigationPersistenceService,
             ApprovalService approvalService,
             ResponsePlanService responsePlanService,
             IncidentService incidentService
     ) {
-        this.aiInvestigationService = aiInvestigationService;
+        this.aiInvestigationPersistenceService = aiInvestigationPersistenceService;
         this.approvalService = approvalService;
         this.responsePlanService = responsePlanService;
         this.incidentService = incidentService;
@@ -70,10 +71,15 @@ public class IncidentController {
     public AIInvestigationResponse investigate(
             @PathVariable String incidentId
     ) {
+        Incident incident = incidentService.getIncidentById(incidentId);
+        return aiInvestigationPersistenceService.investigateAndPersist(incident);
+    }
 
-        IncidentResponse incident = getIncident(incidentId);
-
-        return aiInvestigationService.investigate(incident);
+    @GetMapping("/{incidentId}/investigation")
+    public ResponseEntity<AIInvestigationResponse> getInvestigation(
+            @PathVariable String incidentId
+    ) {
+        return ResponseEntity.of(aiInvestigationPersistenceService.getPersisted(incidentId));
     }
 
     private IncidentResponse toResponse(Incident incident) {
