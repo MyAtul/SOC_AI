@@ -1,0 +1,12 @@
+# Security Monitor state and delivery notes
+
+The monitor stores its checkpoint in `checkpoint.json` and pending alert payloads plus retry schedules in `outbox.json`, beside `main.py`. Both files are replaced atomically through a same-directory temporary file. If a state file is malformed, unreadable, or has a leftover temporary file, startup stops and reports the problem; inspect and restore the state files before restarting. Do not delete a damaged file casually: doing so can skip events or discard queued alerts.
+
+For each 4625 event, the monitor persists the alert to the outbox before it saves the record checkpoint. It then continues collecting events regardless of backend availability and retries the FIFO head with exponential delays capped at 60 seconds. The HTTP JSON payload remains the existing Alert API shape. `alertId` is derived from the Windows record number and is preserved in the outbox across retries and restarts.
+
+## Windows log and crash limitations
+
+- The local outbox protects events only after they have been read and durably written. If the Security log overwrites unread records while the backend is down, those source records can be lost before collection reaches them. The outbox has no configured size limit, so prolonged outages can also consume disk space.
+- The monitor does not reconcile its checkpoint with the Security log's oldest/newest record numbers or detect a cleared log. If clearing/recreating the log resets record numbers below the checkpoint, Windows/pywin32 may return EOF or an error for the old seek position; the monitor currently logs read errors and retries, but does not automatically reset or recover the checkpoint. Manual recovery requires reviewing the checkpoint and log history.
+- Atomic replacement prevents readers from seeing a partially replaced JSON file, but it does not make the outbox and checkpoint one transaction, nor does it guarantee data survives sudden power loss or storage hardware failure. Ordering the outbox write before checkpoint advancement favors replay over skipping. Replays after uncertain HTTP outcomes remain possible; exactly-once delivery is not guaranteed, and backend idempotency is a separate requirement.
+- A successful HTTP response followed by a failure to persist outbox removal can cause the same alert to be sent again after restart. The stable `alertId` supports future backend deduplication but this monitor does not claim the backend currently performs it.
