@@ -10,10 +10,17 @@ import org.slf4j.LoggerFactory;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
 public class DetectionServiceImpl implements DetectionService {
+
+    private static final String FAILED_LOGON_RULE = "FAILED_LOGON";
+    private static final String FAILED_LOGON_DETECTION = "Multiple Failed Logins";
+    private static final String OPEN_STATUS = "OPEN";
+    private static final int FAILED_LOGON_THRESHOLD = 5;
+    private static final long CORRELATION_WINDOW_MINUTES = 5;
 
     private final AlertRepository alertRepository;
     private static final Logger logger = LoggerFactory.getLogger(DetectionServiceImpl.class);
@@ -33,34 +40,52 @@ public class DetectionServiceImpl implements DetectionService {
     @Override
     public Incident evaluate(Alert alert) {
 
-        if (!"FAILED_LOGON".equals(alert.getRule())) {
+        if (!FAILED_LOGON_RULE.equals(alert.getRule())) {
             return null;
         }
 
-        LocalDateTime fiveMinutesAgo =
-                alert.getTimestamp().minusMinutes(5);
+        LocalDateTime eventTimestamp = alert.getTimestamp();
+        String host = alert.getHost();
+        // Without an event time or a known host, events cannot be correlated safely.
+        if (eventTimestamp == null || host == null || host.isBlank()) {
+            return null;
+        }
+
+        LocalDateTime windowStart = eventTimestamp.minusMinutes(CORRELATION_WINDOW_MINUTES);
 
         List<Alert> recentAlerts = alertRepository.findAll()
                 .stream()
-                .filter(a -> "FAILED_LOGON".equals(a.getRule()))
+                .filter(a -> FAILED_LOGON_RULE.equals(a.getRule()))
+                .filter(a -> host.equals(a.getHost()))
                 .filter(a -> a.getTimestamp() != null)
-                .filter(a -> !a.getTimestamp().isBefore(fiveMinutesAgo))
-                .filter(a -> a.getTimestamp().isBefore(alert.getTimestamp())
-                        || a.getTimestamp().isEqual(alert.getTimestamp()))
+                .filter(a -> !a.getTimestamp().isBefore(windowStart))
+                .filter(a -> !a.getTimestamp().isAfter(eventTimestamp))
                 .toList();
 
-        if (recentAlerts.size() < 5) {
+        if (recentAlerts.size() < FAILED_LOGON_THRESHOLD) {
             return null;
+        }
+
+        Optional<Incident> existingIncident = incidentRepository
+                .findFirstByHostAndDetectionAndStatusAndTimestampGreaterThanEqualAndTimestampLessThanEqual(
+                        host,
+                        FAILED_LOGON_DETECTION,
+                        OPEN_STATUS,
+                        windowStart,
+                        eventTimestamp
+                );
+        if (existingIncident.isPresent()) {
+            return existingIncident.get();
         }
 
         Incident incident = new Incident(
                 "INC-" + UUID.randomUUID().toString().substring(0, 8),
                 "Possible Brute Force Attack",
                 "HIGH",
-                "OPEN",
-                alert.getHost(),
-                "Multiple Failed Logins",
-                alert.getTimestamp()
+                OPEN_STATUS,
+                host,
+                FAILED_LOGON_DETECTION,
+                eventTimestamp
         );
 
         Incident savedIncident = incidentRepository.save(incident);
