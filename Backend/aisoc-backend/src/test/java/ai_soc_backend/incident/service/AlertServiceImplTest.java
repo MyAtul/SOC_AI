@@ -12,7 +12,10 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
 
 class AlertServiceImplTest {
@@ -35,19 +38,42 @@ class AlertServiceImplTest {
     }
 
     @Test
-    void returnsExistingAlertWithoutSavingOrEvaluatingAgain() {
+    void retriesDetectionForPreviouslySavedAlertAfterEarlierAttemptFailed() {
         AlertRepository repository = mock(AlertRepository.class);
         DetectionService detectionService = mock(DetectionService.class);
         AlertServiceImpl service = new AlertServiceImpl(repository, detectionService);
         Alert incoming = alert("WIN-101");
         Alert existing = alert("WIN-101");
 
-        when(repository.findByAlertId("WIN-101")).thenReturn(Optional.of(existing));
+        when(repository.findByAlertId("WIN-101"))
+                .thenReturn(Optional.empty(), Optional.of(existing));
+        when(repository.save(incoming)).thenReturn(existing);
+        doThrow(new IllegalStateException("temporary detection failure"))
+                .doReturn(null)
+                .when(detectionService).evaluate(existing);
 
+        assertThrows(IllegalStateException.class, () -> service.processAlert(incoming));
+        assertSame(existing, service.processAlert(incoming));
+
+        verify(repository).save(incoming);
+        verify(detectionService, times(2)).evaluate(existing);
+    }
+
+    @Test
+    void reevaluatesStoredAlertOnRepeatedDeliveryAfterSuccessfulDetection() {
+        AlertRepository repository = mock(AlertRepository.class);
+        DetectionService detectionService = mock(DetectionService.class);
+        AlertServiceImpl service = new AlertServiceImpl(repository, detectionService);
+        Alert incoming = alert("WIN-104");
+        Alert existing = alert("WIN-104");
+
+        when(repository.findByAlertId("WIN-104")).thenReturn(Optional.of(existing));
+
+        assertSame(existing, service.processAlert(incoming));
         assertSame(existing, service.processAlert(incoming));
 
         verify(repository, never()).save(incoming);
-        verify(detectionService, never()).evaluate(incoming);
+        verify(detectionService, times(2)).evaluate(existing);
     }
 
     @Test
@@ -66,7 +92,7 @@ class AlertServiceImplTest {
 
         assertSame(concurrentWinner, service.processAlert(incoming));
 
-        verify(detectionService, never()).evaluate(incoming);
+        verify(detectionService).evaluate(concurrentWinner);
     }
 
     @Test

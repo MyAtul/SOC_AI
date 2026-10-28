@@ -25,21 +25,26 @@ public class AlertServiceImpl implements AlertService {
     public Alert processAlert(Alert alert) {
         Optional<Alert> existing = alertRepository.findByAlertId(alert.getAlertId());
         if (existing.isPresent()) {
-            return existing.get();
+            Alert existingAlert = existing.get();
+            detectionService.evaluate(existingAlert);
+            return existingAlert;
         }
 
         Alert savedAlert;
         try {
             savedAlert = alertRepository.save(alert);
         } catch (DataIntegrityViolationException persistenceError) {
+            Optional<Alert> createdByConcurrentRequest;
             try {
-                Optional<Alert> createdByConcurrentRequest =
-                        alertRepository.findByAlertId(alert.getAlertId());
-                if (createdByConcurrentRequest.isPresent()) {
-                    return createdByConcurrentRequest.get();
-                }
+                createdByConcurrentRequest = alertRepository.findByAlertId(alert.getAlertId());
             } catch (RuntimeException lookupError) {
                 persistenceError.addSuppressed(lookupError);
+                throw persistenceError;
+            }
+            if (createdByConcurrentRequest.isPresent()) {
+                Alert existingAlert = createdByConcurrentRequest.get();
+                detectionService.evaluate(existingAlert);
+                return existingAlert;
             }
             throw persistenceError;
         }
