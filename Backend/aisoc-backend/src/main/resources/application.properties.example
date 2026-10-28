@@ -7,3 +7,6 @@ spring.datasource.password=YOUR_PASSWORD
 spring.jpa.hibernate.ddl-auto=update
 spring.jpa.show-sql=true
 spring.jpa.properties.hibernate.format_sql=true
+
+# Keep migrations opt-in until the baseline has been rehearsed and adopted safely.
+spring.flyway.enabled=false
