@@ -31,6 +31,9 @@ public class Incident {
 
     private LocalDateTime timestamp;
 
+    @Column(name = "correlation_key", length = 64)
+    private String correlationKey;
+
     public Incident() {
     }
 
@@ -115,4 +118,7 @@ public class Incident {
     public void setTimestamp(LocalDateTime timestamp) {
         this.timestamp = timestamp;
     }
+
+    public String getCorrelationKey() { return correlationKey; }
+    public void setCorrelationKey(String correlationKey) { this.correlationKey = correlationKey; }
 }
