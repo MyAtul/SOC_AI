@@ -5,10 +5,12 @@ import ai_soc_backend.incident.repository.IncidentRepository;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
 
 import java.time.LocalDateTime;
 
 @Configuration
+@Profile("!pipeline-test & !no-demo-data")
 public class IncidentDataInitializer {
 
     @Bean

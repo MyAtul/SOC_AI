@@ -3,6 +3,8 @@ package ai_soc_backend.incident.entity;
 import jakarta.persistence.*;
 
 import java.time.LocalDateTime;
+import java.time.Instant;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 @Entity
 @Table(name = "alerts")
@@ -30,6 +32,10 @@ public class Alert {
     private String description;
 
     private LocalDateTime timestamp;
+
+    @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
+    @Column(name = "event_timestamp_utc", columnDefinition = "timestamptz")
+    private Instant eventTimestampUtc;
 
     public Alert() {
     }
@@ -111,4 +117,7 @@ public class Alert {
     public void setTimestamp(LocalDateTime timestamp) {
         this.timestamp = timestamp;
     }
+
+    public Instant getEventTimestampUtc() { return eventTimestampUtc; }
+    public void setEventTimestampUtc(Instant eventTimestampUtc) { this.eventTimestampUtc = eventTimestampUtc; }
 }

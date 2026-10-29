@@ -2,7 +2,6 @@ package ai_soc_backend.incident.service;
 
 import ai_soc_backend.incident.entity.Alert;
 import ai_soc_backend.incident.repository.AlertRepository;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 
 import java.util.Optional;
@@ -11,29 +10,35 @@ import java.util.Optional;
 public class AlertServiceImpl implements AlertService {
 
     private final AlertRepository alertRepository;
-    private final DetectionService detectionService;
-
+    private final AlertPersistenceService alertPersistenceService;
     public AlertServiceImpl(
             AlertRepository alertRepository,
-            DetectionService detectionService
+            AlertPersistenceService alertPersistenceService
     ) {
         this.alertRepository = alertRepository;
-        this.detectionService = detectionService;
+        this.alertPersistenceService = alertPersistenceService;
     }
 
     @Override
     public Alert processAlert(Alert alert) {
         Optional<Alert> existing = alertRepository.findByAlertId(alert.getAlertId());
         if (existing.isPresent()) {
-            Alert existingAlert = existing.get();
-            detectionService.evaluate(existingAlert);
-            return existingAlert;
+            return existing.get();
+        }
+
+        String canonicalHost = HostIdentity.canonicalize(alert.getHost());
+        if (canonicalHost != null) {
+            alert.setHost(canonicalHost);
         }
 
         Alert savedAlert;
         try {
-            savedAlert = alertRepository.save(alert);
-        } catch (DataIntegrityViolationException persistenceError) {
+            // The proxied persistence service commits (or rolls back) alert and work
+            // before control returns here. A losing unique-key race can then be read
+            // safely in a fresh repository transaction.
+            savedAlert = alertPersistenceService.saveNewAlertWithDetectionWork(alert);
+        } catch (AlertIdConflictException alertIdConflict) {
+            var persistenceError = alertIdConflict.getPersistenceError();
             Optional<Alert> createdByConcurrentRequest;
             try {
                 createdByConcurrentRequest = alertRepository.findByAlertId(alert.getAlertId());
@@ -42,14 +47,10 @@ public class AlertServiceImpl implements AlertService {
                 throw persistenceError;
             }
             if (createdByConcurrentRequest.isPresent()) {
-                Alert existingAlert = createdByConcurrentRequest.get();
-                detectionService.evaluate(existingAlert);
-                return existingAlert;
+                return createdByConcurrentRequest.get();
             }
             throw persistenceError;
         }
-
-        detectionService.evaluate(savedAlert);
 
         return savedAlert;
     }

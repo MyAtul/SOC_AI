@@ -2,7 +2,9 @@
 
 The monitor stores its checkpoint in `checkpoint.json` and pending alert payloads plus retry schedules in `outbox.json`, beside `main.py`. Both files are replaced atomically through a same-directory temporary file. If a state file is malformed, unreadable, or has a leftover temporary file, startup stops and reports the problem; inspect and restore the state files before restarting. Do not delete a damaged file casually: doing so can skip events or discard queued alerts.
 
-For each 4625 event, the monitor persists the alert to the outbox before it saves the record checkpoint. It then continues collecting events regardless of backend availability and retries the FIFO head with exponential delays capped at 60 seconds. The HTTP JSON payload remains the existing Alert API shape. `alertId` is derived from the Windows record number and is preserved in the outbox across retries and restarts.
+For each 4625 event, the monitor persists the alert to the outbox before it saves the record checkpoint. It then continues collecting events regardless of backend availability and retries the FIFO head with exponential delays capped at 60 seconds. New payloads retain the legacy local-naive `timestamp` and add the request-only `eventTimestampUtc` ISO-8601 UTC value expected by the backend. Older outbox entries without that optional field remain readable, but the backend will not use them for UTC correlation. The alert host is the local computer name from `socket.gethostname()`; the backend canonicalizes it and rejects `localhost`.
+
+The monitor's default API URL remains `http://localhost:8080/api/alerts`, matching Spring Boot's default server port. Set `AISOC_BACKEND_ALERT_URL=http://127.0.0.1:8082/api/alerts` only when using the backend's `pipeline-test` profile. That profile uses only `127.0.0.1:55432/aisoc_test`; see `Backend/aisoc-backend/start-pipeline-test.ps1`. The synthetic harness targets the same test backend at port 8082. The monitor and synthetic test harness do not read or generate real Windows Security events as part of the pipeline test.
 
 ## Windows log and crash limitations
 

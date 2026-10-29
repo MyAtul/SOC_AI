@@ -3,11 +3,13 @@ package ai_soc_backend.incident.controller;
 import ai_soc_backend.incident.dto.AIInvestigationResponse;
 import ai_soc_backend.incident.dto.ApprovalResponse;
 import ai_soc_backend.incident.dto.IncidentResponse;
+import ai_soc_backend.incident.dto.ApprovalDecisionResponse;
 import ai_soc_backend.incident.entity.Incident;
 import ai_soc_backend.incident.service.AIInvestigationPersistenceService;
 import ai_soc_backend.incident.service.ApprovalService;
 import ai_soc_backend.incident.service.IncidentService;
 import ai_soc_backend.incident.service.ResponsePlanService;
+import ai_soc_backend.incident.service.ApprovalDecisionAuditService;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.http.ResponseEntity;
 
@@ -22,17 +24,20 @@ public class IncidentController {
     private final ApprovalService approvalService;
     private final ResponsePlanService responsePlanService;
     private final IncidentService incidentService;
+    private final ApprovalDecisionAuditService decisionAudit;
 
     public IncidentController(
             AIInvestigationPersistenceService aiInvestigationPersistenceService,
             ApprovalService approvalService,
             ResponsePlanService responsePlanService,
-            IncidentService incidentService
+            IncidentService incidentService,
+            ApprovalDecisionAuditService decisionAudit
     ) {
         this.aiInvestigationPersistenceService = aiInvestigationPersistenceService;
         this.approvalService = approvalService;
         this.responsePlanService = responsePlanService;
         this.incidentService = incidentService;
+        this.decisionAudit = decisionAudit;
     }
 
     @PostMapping("/{incidentId}/approve")
@@ -47,6 +52,12 @@ public class IncidentController {
             @PathVariable String incidentId
     ) {
         return approvalService.deny(incidentId);
+    }
+
+    @GetMapping("/{incidentId}/approval-decisions")
+    public List<ApprovalDecisionResponse> getApprovalDecisions(@PathVariable String incidentId) {
+        incidentService.getIncidentById(incidentId);
+        return decisionAudit.listForIncident(incidentId);
     }
 
     @GetMapping
@@ -91,7 +102,7 @@ public class IncidentController {
                 incident.getStatus(),
                 incident.getHost(),
                 incident.getDetection(),
-                incident.getTimestamp().toString()
+                incident.getTimestamp() == null ? null : incident.getTimestamp().toString()
         );
     }
 }

@@ -9,120 +9,86 @@ import java.time.LocalDateTime;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 class AlertServiceImplTest {
-
     @Test
-    void savesAndEvaluatesNewAlert() {
+    void newAlertIsSavedWithWorkAndDetectionIsDeferred() {
         AlertRepository repository = mock(AlertRepository.class);
-        DetectionService detectionService = mock(DetectionService.class);
-        AlertServiceImpl service = new AlertServiceImpl(repository, detectionService);
-        Alert incoming = alert("WIN-100");
-        Alert saved = alert("WIN-100");
+        AlertPersistenceService persistence = mock(AlertPersistenceService.class);
+        AlertServiceImpl service = new AlertServiceImpl(repository, persistence);
+        Alert input = alert("new");
+        Alert saved = alert("new");
+        when(repository.findByAlertId("new")).thenReturn(Optional.empty());
+        when(persistence.saveNewAlertWithDetectionWork(input)).thenReturn(saved);
 
-        when(repository.findByAlertId("WIN-100")).thenReturn(Optional.empty());
-        when(repository.save(incoming)).thenReturn(saved);
-
-        assertSame(saved, service.processAlert(incoming));
-
-        verify(repository).save(incoming);
-        verify(detectionService).evaluate(saved);
+        assertSame(saved, service.processAlert(input));
+        verify(persistence).saveNewAlertWithDetectionWork(input);
+        verifyNoMoreInteractions(persistence);
     }
 
     @Test
-    void retriesDetectionForPreviouslySavedAlertAfterEarlierAttemptFailed() {
+    void canonicalizesValidHostIdentityBeforePersistingNewAlert() {
         AlertRepository repository = mock(AlertRepository.class);
-        DetectionService detectionService = mock(DetectionService.class);
-        AlertServiceImpl service = new AlertServiceImpl(repository, detectionService);
-        Alert incoming = alert("WIN-101");
-        Alert existing = alert("WIN-101");
+        AlertPersistenceService persistence = mock(AlertPersistenceService.class);
+        AlertServiceImpl service = new AlertServiceImpl(repository, persistence);
+        Alert input = alert("host-normalize");
+        input.setHost("  HOST-A  ");
+        when(repository.findByAlertId("host-normalize")).thenReturn(Optional.empty());
+        when(persistence.saveNewAlertWithDetectionWork(input)).thenReturn(input);
 
-        when(repository.findByAlertId("WIN-101"))
-                .thenReturn(Optional.empty(), Optional.of(existing));
-        when(repository.save(incoming)).thenReturn(existing);
-        doThrow(new IllegalStateException("temporary detection failure"))
-                .doReturn(null)
-                .when(detectionService).evaluate(existing);
+        service.processAlert(input);
 
-        assertThrows(IllegalStateException.class, () -> service.processAlert(incoming));
-        assertSame(existing, service.processAlert(incoming));
-
-        verify(repository).save(incoming);
-        verify(detectionService, times(2)).evaluate(existing);
+        assertEquals("host-a", input.getHost());
+        verify(persistence).saveNewAlertWithDetectionWork(input);
     }
 
     @Test
-    void reevaluatesStoredAlertOnRepeatedDeliveryAfterSuccessfulDetection() {
+    void duplicateDeliveryReturnsExistingAlertWithoutResettingOrRunningDetection() {
         AlertRepository repository = mock(AlertRepository.class);
-        DetectionService detectionService = mock(DetectionService.class);
-        AlertServiceImpl service = new AlertServiceImpl(repository, detectionService);
-        Alert incoming = alert("WIN-104");
-        Alert existing = alert("WIN-104");
+        AlertPersistenceService persistence = mock(AlertPersistenceService.class);
+        AlertServiceImpl service = new AlertServiceImpl(repository, persistence);
+        Alert saved = alert("same");
+        when(repository.findByAlertId("same")).thenReturn(Optional.of(saved));
 
-        when(repository.findByAlertId("WIN-104")).thenReturn(Optional.of(existing));
-
-        assertSame(existing, service.processAlert(incoming));
-        assertSame(existing, service.processAlert(incoming));
-
-        verify(repository, never()).save(incoming);
-        verify(detectionService, times(2)).evaluate(existing);
+        assertSame(saved, service.processAlert(alert("same")));
+        assertSame(saved, service.processAlert(alert("same")));
+        verify(persistence, never()).saveNewAlertWithDetectionWork(any());
+        verify(repository, times(2)).findByAlertId("same");
     }
 
     @Test
-    void returnsConcurrentWinnerAfterUniqueConstraintConflict() {
+    void duplicateInsertRaceReturnsWinnerButDoesNotRunDetectionInline() {
         AlertRepository repository = mock(AlertRepository.class);
-        DetectionService detectionService = mock(DetectionService.class);
-        AlertServiceImpl service = new AlertServiceImpl(repository, detectionService);
-        Alert incoming = alert("WIN-102");
-        Alert concurrentWinner = alert("WIN-102");
-        DataIntegrityViolationException uniquenessConflict =
-                new DataIntegrityViolationException("duplicate alert_id");
+        AlertPersistenceService persistence = mock(AlertPersistenceService.class);
+        AlertServiceImpl service = new AlertServiceImpl(repository, persistence);
+        Alert input = alert("race");
+        Alert winner = alert("race");
+        DataIntegrityViolationException cause = new DataIntegrityViolationException("unique");
+        when(repository.findByAlertId("race")).thenReturn(Optional.empty(), Optional.of(winner));
+        when(persistence.saveNewAlertWithDetectionWork(input)).thenThrow(new AlertIdConflictException(cause));
 
-        when(repository.findByAlertId("WIN-102"))
-                .thenReturn(Optional.empty(), Optional.of(concurrentWinner));
-        when(repository.save(incoming)).thenThrow(uniquenessConflict);
-
-        assertSame(concurrentWinner, service.processAlert(incoming));
-
-        verify(detectionService).evaluate(concurrentWinner);
+        assertSame(winner, service.processAlert(input));
+        verify(persistence).saveNewAlertWithDetectionWork(input);
     }
 
     @Test
-    void rethrowsPersistenceErrorWhenNoConcurrentAlertExists() {
+    void unrelatedPersistenceErrorIsRethrown() {
         AlertRepository repository = mock(AlertRepository.class);
-        DetectionService detectionService = mock(DetectionService.class);
-        AlertServiceImpl service = new AlertServiceImpl(repository, detectionService);
-        Alert incoming = alert("WIN-103");
-        DataIntegrityViolationException persistenceError =
-                new DataIntegrityViolationException("unrelated persistence constraint");
+        AlertPersistenceService persistence = mock(AlertPersistenceService.class);
+        AlertServiceImpl service = new AlertServiceImpl(repository, persistence);
+        Alert input = alert("error");
+        DataIntegrityViolationException error = new DataIntegrityViolationException("other constraint");
+        when(repository.findByAlertId("error")).thenReturn(Optional.empty());
+        when(persistence.saveNewAlertWithDetectionWork(input)).thenThrow(error);
 
-        when(repository.findByAlertId("WIN-103")).thenReturn(Optional.empty());
-        when(repository.save(incoming)).thenThrow(persistenceError);
-
-        assertSame(persistenceError, assertThrows(
-                DataIntegrityViolationException.class,
-                () -> service.processAlert(incoming)
-        ));
-        verify(detectionService, never()).evaluate(incoming);
+        assertSame(error, assertThrows(DataIntegrityViolationException.class, () -> service.processAlert(input)));
     }
 
-    private Alert alert(String alertId) {
-        return new Alert(
-                alertId,
-                "WINDOWS_SECURITY",
-                "FAILED_LOGON",
-                "MEDIUM",
-                "localhost",
-                "Windows Security Event 4625: failed logon detected",
-                LocalDateTime.parse("2026-10-28T12:00:00")
-        );
+    private Alert alert(String id) {
+        return new Alert(id, "WINDOWS_SECURITY", "FAILED_LOGON", "MEDIUM", "host-1", "test",
+                LocalDateTime.parse("2026-10-28T12:00:00"));
     }
 }

@@ -17,6 +17,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.same;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.argThat;
 
 class AIInvestigationPersistenceServiceTest {
 
@@ -36,7 +37,10 @@ class AIInvestigationPersistenceServiceTest {
 
         AIInvestigationResponse persisted = service.investigateAndPersist(incident);
 
-        assertEquals(result, persisted);
+        assertEquals(result.classification(), persisted.classification());
+        assertEquals("SIMULATED", persisted.analysisStatus());
+        assertEquals("windows-4625-threshold", persisted.scenarioMetadata().id());
+        assertEquals("review_manually", persisted.responseActionMetadata().id());
         verify(repository).save(any(AIInvestigation.class));
     }
 
@@ -56,9 +60,26 @@ class AIInvestigationPersistenceServiceTest {
 
         AIInvestigationResponse persisted = service.investigateAndPersist(incident);
 
-        assertEquals(refreshed, persisted);
+        assertEquals(refreshed.classification(), persisted.classification());
+        assertEquals("SIMULATED", persisted.analysisStatus());
         assertEquals("Updated result", existing.getClassification());
         verify(repository).save(same(existing));
+    }
+
+    @Test
+    void providerReceivesNullTimestampWhenLegacyIncidentHasNoTimestamp() {
+        AIInvestigationService aiService = mock(AIInvestigationService.class);
+        AIInvestigationRepository repository = mock(AIInvestigationRepository.class);
+        AIInvestigationPersistenceService service =
+                new AIInvestigationPersistenceService(aiService, repository);
+        Incident legacy = new Incident("INC-LEGACY", "Legacy", "HIGH", "OPEN", "HOST-1", "legacy", null);
+        AIInvestigationResponse expected = response("Legacy result", 0.5);
+        when(aiService.investigate(argThat(request -> request.timestamp() == null))).thenReturn(expected);
+
+        AIInvestigationResponse actual = service.investigate(legacy);
+        assertEquals(expected.classification(), actual.classification());
+        assertEquals("SIMULATED", actual.analysisStatus());
+        assertEquals(null, actual.scenarioMetadata());
     }
 
     private Incident incident() {

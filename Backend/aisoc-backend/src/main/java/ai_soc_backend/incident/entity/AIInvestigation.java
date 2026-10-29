@@ -1,6 +1,8 @@
 package ai_soc_backend.incident.entity;
 
 import ai_soc_backend.incident.dto.AIInvestigationResponse;
+import ai_soc_backend.incident.catalog.AttackScenarioCatalog;
+import ai_soc_backend.incident.catalog.ResponseActionCatalog;
 import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
 import jakarta.persistence.ElementCollection;
@@ -59,6 +61,12 @@ public class AIInvestigation {
     @Column(nullable = false)
     private boolean approvalRequired;
 
+    @Column(name = "analysis_status", nullable = false, length = 24)
+    private String analysisStatus = "UNKNOWN";
+
+    @Column(name = "scenario_id", length = 64)
+    private String scenarioId;
+
     protected AIInvestigation() {
     }
 
@@ -79,6 +87,8 @@ public class AIInvestigation {
         recommendedAction = response.recommendedAction();
         risk = response.risk();
         approvalRequired = response.approvalRequired();
+        analysisStatus = response.analysisStatus() == null ? "UNKNOWN" : response.analysisStatus();
+        scenarioId = response.scenarioMetadata() == null ? null : response.scenarioMetadata().id();
     }
 
     public AIInvestigationResponse toResponse() {
@@ -92,7 +102,12 @@ public class AIInvestigation {
                 summary,
                 recommendedAction,
                 risk,
-                approvalRequired
+                approvalRequired,
+                AttackScenarioCatalog.byId(scenarioId)
+                        .or(() -> AttackScenarioCatalog.forDetection(incident.getDetection()))
+                        .orElse(null),
+                ResponseActionCatalog.find(recommendedAction).orElse(null),
+                analysisStatus
         );
     }
 

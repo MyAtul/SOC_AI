@@ -23,9 +23,7 @@ public class IncidentServiceImpl implements IncidentService {
     @Override
     public Incident getIncidentById(String incidentId) {
         return incidentRepository.findByIncidentId(incidentId)
-                .orElseThrow(() ->
-                        new RuntimeException("Incident not found: " + incidentId)
-                );
+                .orElseThrow(() -> new IncidentNotFoundException(incidentId));
     }
 
     @Override
